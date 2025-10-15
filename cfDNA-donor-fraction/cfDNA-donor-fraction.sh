@@ -26,7 +26,7 @@ results="results"
 
 mkdir -p "$reads" "$aligned_reads" "$dedup" "$recal" "$bqsr" "$size_metrics" "$results"
 
-# --- Intermediate results ---
+# --- Intermediate outputs ---
 MIN_DP=10
 MIN_ALT_READS=3
 OUTDIR_MT2="${results}/mutect2"
@@ -36,25 +36,25 @@ OUTDIR_SCR="${results}/scripts"
 mkdir -p "$OUTDIR_MT2" "$OUTDIR_TAB" "$OUTDIR_SIG" "$OUTDIR_SCR"
 
 # 0) PRE-CHECK
-echo "# 0. PRE-CHECK: referencias e índices"
+echo "# 0. PRE-CHECK: references and indexes"
 [[ -f "${ref}.fai" ]] || samtools faidx "$ref"
 [[ -f "${ref%.*}.dict" ]] || gatk CreateSequenceDictionary -R "$ref" -O "${ref%.*}.dict"
 [[ -f "${dbsnp_vcf}.tbi" ]] || tabix -p vcf "$dbsnp_vcf"
 [[ -f "${targets40_vcf}.tbi" ]] || tabix -p vcf "$targets40_vcf"
 if [[ ! -f "${ref}.bwt" || ! -f "${ref}.sa" ]]; then
-  echo "# Indexando referencia para BWA (primera vez)"; bwa index -a bwtsw "$ref"; fi
+  echo "# Indexing reference for BWA (first run)"; bwa index -a bwtsw "$ref"; fi
 
 # 1) FASTP
 echo "# 1. FASTQ QC / TRIMMING WITH FASTP"
 R1_list=("${raw_fastq}"/*_R1_001.fastq.gz)
 if (( ${#R1_list[@]} == 0 )); then
-  echo "[WARN] No hay FASTQ en ${raw_fastq}; saltando FASTP"
+  echo "[WARN] No FASTQ files found in ${raw_fastq}; skipping FASTP"
 else
   for R1 in "${R1_list[@]}"; do
     sample=$(basename "$R1" _R1_001.fastq.gz)
     R2="${raw_fastq}/${sample}_R2_001.fastq.gz"
-    echo "Procesando muestra: $sample"
-    if [[ ! -f "$R2" ]]; then echo "[ERROR] Falta R2: $R2"; exit 1; fi
+    echo "Processing sample: $sample"
+    if [[ ! -f "$R2" ]]; then echo "[ERROR] Missing R2: $R2"; exit 1; fi
     fastp -i "$R1" -I "$R2" \
       -o "${reads}/${sample}_R1_001.filtered.fastq.gz" \
       -O "${reads}/${sample}_R2_001.filtered.fastq.gz" \
@@ -68,7 +68,7 @@ fi
 echo "# 2. ALIGNMENT WITH BWA-MEM"
 F1_list=("${reads}"/*_R1_001.filtered.fastq.gz)
 if (( ${#F1_list[@]} == 0 )); then
-  echo "[ERROR] No hay FASTQ filtrados en ${reads}. ¿Se ejecutó FASTP?"; exit 1
+  echo "[ERROR] No filtered FASTQ files in ${reads}. Did FASTP run?"; exit 1
 fi
 for R1 in "${F1_list[@]}"; do
   sample=$(basename "$R1" _R1_001.filtered.fastq.gz)
@@ -78,12 +78,12 @@ for R1 in "${F1_list[@]}"; do
   bwa mem -t "$threads" -R "$RG" "$ref" "$R1" "$R2" > "${aligned_reads}/${sample}.sam"
  done
 
-# Comprobación de SAMs creados
+# Check SAM creation
 sam_files=("${aligned_reads}"/*.sam)
 if (( ${#sam_files[@]} == 0 )); then
-  echo "[ERROR] No se generaron SAMs en ${aligned_reads}"; exit 1
+  echo "[ERROR] No SAMs generated in ${aligned_reads}"; exit 1
 else
-  echo "SAMs creados:"; ls -1 "${aligned_reads}"/*.sam
+  echo "SAMs generated:"; ls -1 "${aligned_reads}"/*.sam
 fi
 
 # 3) MARK DUPLICATES
@@ -103,10 +103,9 @@ for bam in "$dedup"/*_sorted_dedup.bam; do
   samtools index "${bqsr}/${sample}_bqsr.bam"
  done
 
-# 5) Métricas de QC profundas (FastQC + samtools stats + Picard + MultiQC)
-echo "# 5. Métricas de QC profundas (FastQC + samtools stats + Picard + MultiQC)"
+# 5) DEEP QC METRICS
+echo "# 5. DEEP QC METRICS (FastQC + samtools stats + Picard + MultiQC)"
 
-# --- FastQC en RAW y FILTRADOS ---
 fq_raw_out="${size_metrics}/fastqc_raw"
 fq_filt_out="${size_metrics}/fastqc_filtered"
 mkdir -p "$fq_raw_out" "$fq_filt_out"
@@ -122,18 +121,18 @@ for fq in "${raw_fastq}"/*.fastq.gz; do
   fi
 done
 
-# FILTRADOS
+# Filtered
 for fq in "${reads}"/*_R[12]_001.filtered.fastq.gz; do
   [[ -e "$fq" ]] || continue
   base=$(basename "${fq}" .fastq.gz)
   if [[ ! -s "${fq_filt_out}/${base}_fastqc.zip" ]]; then
     fastqc -t "${threads}" -o "$fq_filt_out" "$fq"
   else
-    echo "[SKIP] FastQC FILT ya existe: ${base}"
+    echo "[SKIP] FastQC FILT already exist: ${base}"
   fi
 done
 
-# --- samtools stats por BAM ---
+# --- samtools stats by BAM ---
 for bam in "${bqsr}"/*_bqsr.bam; do
   [[ -e "$bam" ]] || continue
   sample=$(basename "$bam" _bqsr.bam)
@@ -141,7 +140,7 @@ for bam in "${bqsr}"/*_bqsr.bam; do
   if [[ ! -s "$stats_out" ]]; then
     samtools stats -@ "${threads}" "$bam" > "$stats_out"
   else
-    echo "[SKIP] samtools stats ya existe: ${stats_out}"
+    echo "[SKIP] samtools stats already exists: ${stats_out}"
   fi
 done
 
@@ -162,23 +161,23 @@ for bam in "${bqsr}"/*_bqsr.bam; do
   if [[ ! -s "$gc_metrics" || ! -s "$gc_chart" || ! -s "$gc_sum" ]]; then
     gatk CollectGcBiasMetrics -I "$bam" -R "$ref" -O "$gc_metrics" -S "$gc_sum" --CHART "$gc_chart"
   else
-    echo "[SKIP] Picard GC Bias ya existe para $sample"
+    echo "[SKIP] Picard GC Bias already exists by $sample"
   fi
 
   if [[ ! -s "$base_cycle" || ! -s "$base_cycle_pdf" ]]; then
     gatk CollectBaseDistributionByCycle -I "$bam" -O "$base_cycle" --CHART "$base_cycle_pdf"
   else
-    echo "[SKIP] BaseDistributionByCycle ya existe para $sample"
+    echo "[SKIP] BaseDistributionByCycle already exists $sample"
   fi
 
   if [[ ! -s "$qy_metrics" ]]; then
     gatk CollectQualityYieldMetrics -I "$bam" -O "$qy_metrics"
   else
-    echo "[SKIP] QualityYieldMetrics ya existe para $sample"
+    echo "[SKIP] QualityYieldMetrics already exists $sample"
   fi
 done
 
-# --- MultiQC: agregamos todo ---
+# --- MultiQC ---
 mqc_out="${size_metrics}"
 mqc_report="${mqc_out}/multiqc_report.html"
 if [[ ! -s "$mqc_report" ]]; then
@@ -189,11 +188,11 @@ if [[ ! -s "$mqc_report" ]]; then
     "$size_metrics" \
     -o "$mqc_out"
 else
-  echo "[SKIP] MultiQC ya existe: $mqc_report"
+  echo "[SKIP] MultiQC already exists: $mqc_report"
 fi
 
-# 6) Firma R & D
-echo "# 6. FIRMA R&D"
+# 6) Signature R & D
+echo "# 6. Signature R&D"
 
 gatk HaplotypeCaller -R "$ref" -I "${bqsr}/${RECEPTOR}_bqsr.bam" -ERC GVCF -L "$targets40_vcf" -O "${OUTDIR_SIG}/${RECEPTOR}.g.vcf.gz" --dbsnp "$dbsnp_vcf" --native-pair-hmm-threads "$threads"
 gatk HaplotypeCaller -R "$ref" -I "${bqsr}/${DONOR}_bqsr.bam"     -ERC GVCF -L "$targets40_vcf" -O "${OUTDIR_SIG}/${DONOR}.g.vcf.gz"    --dbsnp "$dbsnp_vcf" --native-pair-hmm-threads "$threads"
@@ -206,7 +205,7 @@ tabix -p vcf "${OUTDIR_SIG}/RD.signature.vcf.gz" || true
 
 gatk VariantsToTable -V "${OUTDIR_SIG}/RD.signature.vcf.gz" -O "${OUTDIR_SIG}/RD.signature.tsv" -F CHROM -F POS -F ID -F REF -F ALT -GF GT --show-filtered true
 
-# 7) Donor/Receptor map extendido
+# 7) Donor/Receptor map 
 echo "# 7. DONOR/RECEPTOR MAP"
 cat > "${OUTDIR_SCR}/make_donor_map.py" << 'PY'
 import sys, gzip
@@ -284,15 +283,15 @@ PY
 python3 "${OUTDIR_SCR}/make_donor_map.py" "${OUTDIR_SIG}/RD.signature.vcf.gz" "$RECEPTOR" "$DONOR" "${OUTDIR_SIG}/donor_map.tsv"
 echo "[INFO] donor_map.tsv -> ${OUTDIR_SIG}/donor_map.tsv"
 
-# 8) Detectar mezclas
-echo "# 8. DETECTAR MEZCLAS"
+# 8) Detect mixtures
+echo "# 8. Mixture detection"
 MIX_BAMS=( $(ls "${bqsr}"/*_bqsr.bam | grep -v -E "/(${RECEPTOR}_bqsr|${DONOR}_bqsr)\.bam$" || true) )
 if (( ${#MIX_BAMS[@]} == 0 )); then echo "[ERROR] No hay BAMs de mezcla en ${bqsr}"; exit 1; fi
 
 echo "[INFO] Mezclas detectadas:"; for x in "${MIX_BAMS[@]}"; do echo "  - $(basename "$x")"; done
 
-# 9) Mutect2 por mezcla
-echo "# 9. MUTECT2 POR MEZCLAS"
+# 9) Mutect2
+echo "# 9. MUTECT2"
 for mix_bam in "${MIX_BAMS[@]}"; do
   mix_base=$(basename "$mix_bam" _bqsr.bam)
   gatk Mutect2 -R "$ref" -I "$mix_bam" -tumor "$mix_base" -I "${bqsr}/${RECEPTOR}_bqsr.bam" -normal "$RECEPTOR" \
@@ -303,8 +302,8 @@ for mix_bam in "${MIX_BAMS[@]}"; do
 ' "${OUTDIR_MT2}/${mix_base}.unfiltered.vcf.gz" > "${OUTDIR_MT2}/${mix_base}.AD.tsv"
  done
 
-# 10) SITIOS ANCLA (hetero + dosificación)
-echo "# 10. SITIOS ANCLA (desde donor_map con heterocigosidad y dosificación)"
+# 10) Hang site
+echo "# 10."
 cat > "${OUTDIR_SCR}/create_anchor_sites_from_map.py" << 'PY'
 import sys, csv, argparse
 
@@ -355,8 +354,8 @@ python3 "${OUTDIR_SCR}/create_anchor_sites_from_map.py" \
 N_ANCHOR=$(($(wc -l < "${OUTDIR_SIG}/anchor_sites.tsv")-1))
 echo "[INFO] Sitios ancla (heterocigosidad/dosis): ${OUTDIR_SIG}/anchor_sites.tsv (${N_ANCHOR} sitios)"
 
-# 11) Resumen % Donante (anclado + ponderado por DP)
-echo "# 11. RESUMEN % DONANTE (ancla y 0% si no detecta)"
+# 11) Summary % Donnor
+echo "# 11. Summary % Donor"
 cat > "${OUTDIR_SCR}/summarize_mixes_anchored.py" << 'PY'
 import sys, csv, os, argparse
 
@@ -472,16 +471,16 @@ python3 "${OUTDIR_SCR}/summarize_mixes_anchored.py" \
   --outdir_tables "$OUTDIR_TAB" \
   --summary_out "${OUTDIR_TAB}/final_summary.tsv"
 
-# FIN
+# End
 echo -e "
 ===============================================
-[DONE] Resultados clave (v8):
-  - Firma R&D (GTs):        ${OUTDIR_SIG}/RD.signature.tsv
-  - Mapa donante/receptor:  ${OUTDIR_SIG}/donor_map.tsv
-  - Sitios ancla (hom-op):  ${OUTDIR_SIG}/anchor_sites.tsv
-  - VCF Mutect2 por mezcla: ${OUTDIR_MT2}/*unfiltered.vcf.gz
-  - AD por mezcla:          ${OUTDIR_MT2}/*.AD.tsv
-  - Por sitio por mezcla:   ${OUTDIR_TAB}/*.per_site.tsv
-  - Resumen anclado:        ${OUTDIR_TAB}/final_summary.tsv
-  - MultiQC (profundo):     ${size_metrics}/multiqc_report.html
+[DONE] Key results (v8):
+  - Signature R&D (GTs):        ${OUTDIR_SIG}/RD.signature.tsv
+  - Map donor/receptor:         ${OUTDIR_SIG}/donor_map.tsv
+  - Hang sites (hom-op):        ${OUTDIR_SIG}/anchor_sites.tsv
+  - VCF Mutect2:                ${OUTDIR_MT2}/*unfiltered.vcf.gz
+  - AD:                         ${OUTDIR_MT2}/*.AD.tsv
+  - By sites by mixture:        ${OUTDIR_TAB}/*.per_site.tsv
+  - Summary:                    ${OUTDIR_TAB}/final_summary.tsv
+  - MultiQC:                    ${size_metrics}/multiqc_report.html
 ==============================================="
