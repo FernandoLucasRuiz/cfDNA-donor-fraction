@@ -45,7 +45,13 @@ The output includes:
 
 ### Credits  
 This pipeline was developed by **[Lucas-Ruiz, Fernando]**, Biomedical Research Institute of Murcia, Spain.  
-Contact: **[your.email@institution.org]**  
+Contact: **fernando.lucas@um.es**  
 
 The project builds upon open-source components from the **Broad Institute GATK**, **samtools**, **Picard**, and **MultiQC** frameworks.  
-All analyses and automation logic were designed and implemented by the author to support cfDNA quantification in transplant and liquid biopsy studies.
+All analyses and automation logic were designed and implemented by the author to support cfDNA quantification.
+
+### How to cite
+
+Lucas-Ruiz, Fernando. (2025).
+cfDNA-donor-fraction (v9.0.0): A reproducible pipeline for quantifying donor-derived cell-free DNA in recipient plasma using Mutect2 and a 40-SNP panel.
+Zenodo. https://doi.org/10.5281/zenodo.17359851
